@@ -391,7 +391,8 @@ class TUI:
             )
 
         if truncated:
-            blocks.append(Text("note: tool output was truncated", style="warning"))
+            blocks.append(
+                Text("note: tool output was truncated", style="warning"))
 
         panel = Panel(
             Group(*blocks),
@@ -431,14 +432,18 @@ class TUI:
         ]
 
         if confirmation.context.command:
-            output.append(Text(f"$ {confirmation.context.command}", style="warning"))
+            output.append(
+                Text(f"$ {confirmation.context.command}", style="warning"))
 
         if confirmation.context.affected_paths:
-            paths_text: str = "\n".join(str(p) for p in confirmation.context.affected_paths)
-            output.append(Text(f"Affected paths:\n{paths_text}", style="muted"))
+            paths_text: str = "\n".join(
+                str(p) for p in confirmation.context.affected_paths)
+            output.append(
+                Text(f"Affected paths:\n{paths_text}", style="muted"))
 
         if confirmation.context.is_dangerous:
-            output.append(Text("⚠ This action is flagged as dangerous", style="error"))
+            output.append(
+                Text("⚠ This action is flagged as dangerous", style="error"))
 
         self.console.print()
         self.console.print(
