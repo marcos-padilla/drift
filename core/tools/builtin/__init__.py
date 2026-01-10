@@ -16,6 +16,34 @@ from core.tools.builtin.todo import TodosTool
 from core.tools.builtin.web_fetch import WebFetchTool
 from core.tools.builtin.web_search import WebSearchTool
 from core.tools.builtin.write_file import WriteFileTool
+from core.tools.builtin.git_status import GitStatusTool
+from core.tools.builtin.git_diff import GitDiffTool
+from core.tools.builtin.git_log import GitLogTool
+from core.tools.builtin.git_commit import GitCommitTool
+from core.tools.builtin.git_branch import GitBranchTool
+from core.tools.builtin.git_stash import GitStashTool
+from core.tools.builtin.code_analysis import (
+    FindImportsTool,
+    FindDefinitionsTool,
+    FindUsagesTool,
+    CodeMetricsTool,
+)
+from core.tools.builtin.file_ops import (
+    CopyFileTool,
+    MoveFileTool,
+    DeleteFileTool,
+    CreateDirectoryTool,
+)
+from core.tools.builtin.code_quality import (
+    FormatCodeTool,
+    LintCodeTool,
+    TypeCheckTool,
+)
+from core.tools.builtin.test_runner import RunTestsTool
+from core.tools.builtin.dependencies import (
+    ListDependenciesTool,
+    CheckUpdatesTool,
+)
 
 __all__ = [
     "ReadFileTool",
@@ -29,6 +57,26 @@ __all__ = [
     "WebFetchTool",
     "TodosTool",
     "MemoryTool",
+    "GitStatusTool",
+    "GitDiffTool",
+    "GitLogTool",
+    "GitCommitTool",
+    "GitBranchTool",
+    "GitStashTool",
+    "FindImportsTool",
+    "FindDefinitionsTool",
+    "FindUsagesTool",
+    "CodeMetricsTool",
+    "CopyFileTool",
+    "MoveFileTool",
+    "DeleteFileTool",
+    "CreateDirectoryTool",
+    "FormatCodeTool",
+    "LintCodeTool",
+    "TypeCheckTool",
+    "RunTestsTool",
+    "ListDependenciesTool",
+    "CheckUpdatesTool",
 ]
 
 
@@ -59,4 +107,24 @@ def get_all_builtin_tools() -> list[type]:
         WebFetchTool,
         TodosTool,
         MemoryTool,
+        GitStatusTool,
+        GitDiffTool,
+        GitLogTool,
+        GitCommitTool,
+        GitBranchTool,
+        GitStashTool,
+        FindImportsTool,
+        FindDefinitionsTool,
+        FindUsagesTool,
+        CodeMetricsTool,
+        CopyFileTool,
+        MoveFileTool,
+        DeleteFileTool,
+        CreateDirectoryTool,
+        FormatCodeTool,
+        LintCodeTool,
+        TypeCheckTool,
+        RunTestsTool,
+        ListDependenciesTool,
+        CheckUpdatesTool,
     ]

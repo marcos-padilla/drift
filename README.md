@@ -38,9 +38,29 @@
 
 ### Built-in Tools
 
-- **File Operations**: `read_file`, `write_file`, `edit_file`
+#### File Operations
+- **Read/Write**: `read_file`, `write_file`, `edit_file`
+- **File Management**: `copy_file`, `move_file`, `delete_file`, `create_directory`
 - **Directory Operations**: `list_dir`, `glob`
-- **Code Search**: `grep`
+
+#### Code Analysis
+- **Search**: `grep` (text search)
+- **Code Analysis**: `find_imports`, `find_definitions`, `find_usages`, `code_metrics`
+
+#### Git Operations
+- **Status & History**: `git_status`, `git_diff`, `git_log`
+- **Commits & Branches**: `git_commit`, `git_branch`, `git_stash`
+
+#### Code Quality
+- **Formatting**: `format_code` (black, prettier, etc.)
+- **Linting**: `lint_code` (ruff, flake8, eslint, etc.)
+- **Type Checking**: `type_check` (mypy, tsc, etc.)
+
+#### Testing & Dependencies
+- **Testing**: `run_tests` (pytest, unittest, jest, mocha)
+- **Dependencies**: `list_dependencies`, `check_updates`
+
+#### Other Operations
 - **Shell Execution**: `shell` (with safety checks)
 - **Web Operations**: `web_search`, `web_fetch`
 - **Task Management**: `todos`

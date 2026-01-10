@@ -152,7 +152,7 @@ class Session:
         self.context_manager = ContextManager(
             config=self.config,
             user_memory=self._load_memory(),
-            tools=self.tool_registry.get_tools(),
+            tools=self.tool_registry.get_schemas(),
         )
         logger.info(f"Session {self.session_id} initialized")
 

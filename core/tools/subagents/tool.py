@@ -7,15 +7,17 @@ and limited tool access for specialized tasks.
 
 import asyncio
 import logging
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from core.agent.agent import Agent
 from core.agent.events import AgentEventType
 from core.tools.base import Tool
 from core.tools.models import ToolInvocation, ToolKind, ToolResult
 from core.tools.subagents.models import SubagentDefinition
+
+if TYPE_CHECKING:
+    from core.agent.agent import Agent
 
 logger = logging.getLogger(__name__)
 
@@ -142,6 +144,9 @@ class SubagentTool(Tool):
         params = SubagentParams(**invocation.params)
         if not params.goal:
             return ToolResult.error_result("No goal specified for sub-agent")
+
+        # Lazy import to avoid circular dependency
+        from core.agent.agent import Agent
 
         # Create subagent configuration
         config_dict = self.config.to_dict()

@@ -390,6 +390,24 @@ class TUI:
                 ),
             )
 
+        # Add error recovery suggestions for failed operations
+        if not success and error:
+            error_lower: str = error.lower()
+            suggestions: list[str] = []
+            if "not found" in error_lower:
+                suggestions.append("Check if the file/path exists")
+            elif "permission" in error_lower:
+                suggestions.append("Check file permissions")
+            elif "timeout" in error_lower:
+                suggestions.append("Operation timed out - try with smaller scope")
+            elif "validation" in error_lower:
+                suggestions.append("Check parameter format and requirements")
+
+            if suggestions:
+                suggestion_text = Text("💡 Suggestions: ", style="dim")
+                suggestion_text.append("; ".join(suggestions), style="dim italic")
+                blocks.append(suggestion_text)
+
         if truncated:
             blocks.append(
                 Text("note: tool output was truncated", style="warning"))

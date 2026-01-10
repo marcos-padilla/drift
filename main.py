@@ -69,6 +69,8 @@ class CLI:
         self.agent: Agent | None = None
         self.config: Configuration = config
         self.tui: TUI = TUI(config, console)
+        self.command_history: list[str] = []
+        self.history_index: int = -1
 
     async def run_single(self, message: str) -> str | None:
         """
@@ -122,10 +124,18 @@ class CLI:
 
             while True:
                 try:
+                    # Simple command history (up/down arrow support would need readline)
                     user_input: str = console.input(
                         "\n[user]>[/user] ").strip()
                     if not user_input:
                         continue
+
+                    # Add to history (skip duplicates of last command)
+                    if not self.command_history or self.command_history[-1] != user_input:
+                        self.command_history.append(user_input)
+                        if len(self.command_history) > 100:
+                            self.command_history.pop(0)
+                    self.history_index = -1
 
                     if user_input.startswith("/"):
                         should_continue: bool = await self._handle_command(user_input)
@@ -209,6 +219,19 @@ class CLI:
             elif event.type == AgentEventType.AGENT_ERROR:
                 error: str = event.data.get("error", "Unknown error")
                 console.print(f"\n[error]Error: {error}[/error]")
+                # Provide helpful suggestions for common errors
+                if "Maximum turns" in error:
+                    console.print(
+                        "[dim]💡 Tip: Try breaking the task into smaller steps or use /clear to reset context[/dim]",
+                    )
+                elif "timeout" in error.lower():
+                    console.print(
+                        "[dim]💡 Tip: The operation timed out. Try with a smaller scope or increase timeout[/dim]",
+                    )
+                elif "not found" in error.lower():
+                    console.print(
+                        "[dim]💡 Tip: Check if the required tool or file exists[/dim]",
+                    )
             elif event.type == AgentEventType.TOOL_CALL_START:
                 tool_name: str = event.data.get("name", "unknown")
                 tool_kind: str | None = self._get_tool_kind(tool_name)
