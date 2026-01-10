@@ -3,29 +3,52 @@ Text User Interface for the Drift framework.
 
 This module provides a TUI class for handling user interactions,
 displaying agent output, tool calls, and confirmation requests
-with rich console formatting.
+with rich console formatting and a minimal, clean design.
 """
 
 import logging
+from pathlib import Path
 from typing import Any
 
-from rich.console import Console
+from rich import box
+from rich.console import Console, Group
+from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.prompt import Prompt
+from rich.rule import Rule
+from rich.syntax import Syntax
 from rich.text import Text
 
 from core.config.schema import Configuration
 from core.safety.models import ToolConfirmation
-from core.tools.models import ToolKind
+from core.ui.formatters import (
+    format_generic_output,
+    format_grep_output,
+    format_glob_output,
+    format_list_dir_output,
+    format_memory_output,
+    format_read_file_output,
+    format_shell_output,
+    format_tool_arguments_table,
+    format_todos_output,
+    format_web_fetch_output,
+    format_web_search_output,
+    format_write_file_output,
+)
 
 logger = logging.getLogger(__name__)
+
+# Maximum tokens for tool output blocks
+MAX_BLOCK_TOKENS: int = 2500
 
 
 class TUI:
     """
-    Text User Interface for interactive agent sessions.
+    Text User Interface for interactive Drift sessions.
 
     This class handles all user-facing output including welcome messages,
-    assistant responses, tool calls, and confirmation requests.
+    Drift responses, tool calls, and confirmation requests with a minimal,
+    clean design optimized for dark terminals.
 
     Parameters
     ----------
@@ -40,8 +63,12 @@ class TUI:
         Configuration object.
     console : Console
         Rich console instance.
-    _assistant_streaming : bool
+    _assistant_stream_open : bool
         Whether assistant is currently streaming output.
+    _tool_args_by_call_id : dict[str, dict[str, Any]]
+        Dictionary storing tool arguments by call ID for completion display.
+    cwd : Path
+        Current working directory.
 
     Examples
     --------
@@ -50,13 +77,15 @@ class TUI:
     >>> config = load_configuration()
     >>> console = get_console()
     >>> tui = TUI(config, console)
-    >>> tui.print_welcome("AI Agent", ["model: gpt-4o"])
+    >>> tui.print_welcome("Drift", ["model: gpt-4o"])
     """
 
     def __init__(self, config: Configuration, console: Console) -> None:
         self.config: Configuration = config
         self.console: Console = console
-        self._assistant_streaming: bool = False
+        self._assistant_stream_open: bool = False
+        self._tool_args_by_call_id: dict[str, dict[str, Any]] = {}
+        self.cwd: Path = config.cwd
 
     def print_welcome(
         self,
@@ -75,13 +104,19 @@ class TUI:
 
         Examples
         --------
-        >>> tui.print_welcome("AI Agent", ["model: gpt-4o", "cwd: /path"])
+        >>> tui.print_welcome("Drift", ["model: gpt-4o", "cwd: /path"])
         """
-        content: str = title
-        if lines:
-            content += "\n" + "\n".join(f"  {line}" for line in lines)
-
-        self.console.print(Panel(content, title="[bold cyan]Welcome[/bold cyan]"))
+        body: str = "\n".join(lines) if lines else ""
+        self.console.print(
+            Panel(
+                Text(body, style="code"),
+                title=Text(title, style="highlight"),
+                title_align="left",
+                border_style="border",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            ),
+        )
 
     def begin_assistant(self) -> None:
         """
@@ -91,9 +126,9 @@ class TUI:
         --------
         >>> tui.begin_assistant()
         """
-        if not self._assistant_streaming:
-            self.console.print("\n[bold cyan][assistant][/bold cyan] ", end="")
-            self._assistant_streaming = True
+        self.console.print()
+        self.console.print(Rule(Text("Drift", style="assistant")))
+        self._assistant_stream_open = True
 
     def stream_assistant_delta(self, content: str) -> None:
         """
@@ -110,8 +145,6 @@ class TUI:
         >>> tui.stream_assistant_delta("Hello")
         >>> tui.stream_assistant_delta(" world")
         """
-        if not self._assistant_streaming:
-            self.begin_assistant()
         self.console.print(content, end="", markup=False)
 
     def end_assistant(self) -> None:
@@ -122,14 +155,14 @@ class TUI:
         --------
         >>> tui.end_assistant()
         """
-        if self._assistant_streaming:
-            self.console.print()  # New line
-            self._assistant_streaming = False
+        if self._assistant_stream_open:
+            self.console.print()
+        self._assistant_stream_open = False
 
     def tool_call_start(
         self,
         call_id: str,
-        tool_name: str,
+        name: str,
         tool_kind: str | None,
         arguments: dict[str, Any],
     ) -> None:
@@ -140,7 +173,7 @@ class TUI:
         ----------
         call_id : str
             Tool call ID.
-        tool_name : str
+        name : str
             Name of the tool.
         tool_kind : str | None
             Kind of tool (read, write, shell, etc.).
@@ -151,20 +184,48 @@ class TUI:
         --------
         >>> tui.tool_call_start("call_123", "read_file", "read", {"path": "test.py"})
         """
-        kind_display: str = f" [{tool_kind}]" if tool_kind else ""
-        self.console.print(
-            f"\n[dim][tool] Calling {tool_name}{kind_display}[/dim]",
+        # Store arguments for completion display
+        self._tool_args_by_call_id[call_id] = arguments
+
+        border_style: str = f"tool.{tool_kind}" if tool_kind else "tool"
+
+        title = Text.assemble(
+            ("⏺ ", "muted"),
+            (name, "tool"),
+            ("  ", "muted"),
+            (f"#{call_id[:8]}", "muted"),
         )
-        if arguments:
-            args_str: str = str(arguments)
-            if len(args_str) > 100:
-                args_str = args_str[:100] + "..."
-            self.console.print(f"  [dim]args: {args_str}[/dim]")
+
+        # Display paths relative to CWD
+        display_args: dict[str, Any] = dict(arguments)
+        for key in ("path", "cwd"):
+            val = display_args.get(key)
+            if isinstance(val, str) and self.cwd:
+                from core.ui.helpers import display_path_rel_to_cwd
+
+                display_args[key] = display_path_rel_to_cwd(val, self.cwd)
+
+        panel = Panel(
+            (
+                format_tool_arguments_table(name, display_args, self.cwd)
+                if display_args
+                else Text("(no args)", style="muted")
+            ),
+            title=title,
+            title_align="left",
+            subtitle=Text("running", style="muted"),
+            subtitle_align="right",
+            border_style=border_style,
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+        self.console.print()
+        self.console.print(panel)
 
     def tool_call_complete(
         self,
         call_id: str,
-        tool_name: str,
+        name: str,
         tool_kind: str | None,
         success: bool,
         output: str,
@@ -181,7 +242,7 @@ class TUI:
         ----------
         call_id : str
             Tool call ID.
-        tool_name : str
+        name : str
             Name of the tool.
         tool_kind : str | None
             Kind of tool.
@@ -206,30 +267,144 @@ class TUI:
         ...     "call_123", "read_file", "read", True, "file content", None, None, None, False, None
         ... )
         """
-        status_color: str = "green" if success else "red"
-        status_text: str = "✓" if success else "✗"
-        kind_display: str = f" [{tool_kind}]" if tool_kind else ""
+        border_style: str = f"tool.{tool_kind}" if tool_kind else "tool"
+        status_icon: str = "✓" if success else "✗"
+        status_style: str = "success" if success else "error"
 
-        self.console.print(
-            f"  [{status_color}]{status_text}[/{status_color}] "
-            f"{tool_name}{kind_display}",
+        title = Text.assemble(
+            (f"{status_icon} ", status_style),
+            (name, "tool"),
+            ("  ", "muted"),
+            (f"#{call_id[:8]}", "muted"),
         )
 
-        if error:
-            self.console.print(f"    [red]Error: {error}[/red]")
+        args: dict[str, Any] = self._tool_args_by_call_id.get(call_id, {})
 
-        if exit_code is not None and exit_code != 0:
-            self.console.print(f"    [yellow]Exit code: {exit_code}[/yellow]")
+        # Format output based on tool type
+        blocks: list[Any] = []
+
+        if name == "read_file" and success:
+            blocks.append(
+                format_read_file_output(
+                    name,
+                    output,
+                    metadata,
+                    self.cwd,
+                    self.config.model_name,
+                ),
+            )
+        elif name in {"write_file", "edit"} and success and diff:
+            blocks.append(
+                format_write_file_output(
+                    name,
+                    output,
+                    diff,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "shell" and success:
+            blocks.append(
+                format_shell_output(
+                    name,
+                    output,
+                    args,
+                    exit_code,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "list_dir" and success:
+            blocks.append(
+                format_list_dir_output(
+                    name,
+                    output,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "grep" and success:
+            blocks.append(
+                format_grep_output(
+                    name,
+                    output,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "glob" and success:
+            blocks.append(
+                format_glob_output(
+                    name,
+                    output,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "web_search" and success:
+            blocks.append(
+                format_web_search_output(
+                    name,
+                    output,
+                    args,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "web_fetch" and success:
+            blocks.append(
+                format_web_fetch_output(
+                    name,
+                    output,
+                    args,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "todos" and success:
+            blocks.append(
+                format_todos_output(
+                    name,
+                    output,
+                    self.config.model_name,
+                ),
+            )
+        elif name == "memory" and success:
+            blocks.append(
+                format_memory_output(
+                    name,
+                    output,
+                    args,
+                    metadata,
+                    self.config.model_name,
+                ),
+            )
+        else:
+            blocks.append(
+                format_generic_output(
+                    name,
+                    output,
+                    error,
+                    success,
+                    self.config.model_name,
+                ),
+            )
 
         if truncated:
-            self.console.print("    [dim]Output truncated[/dim]")
+            blocks.append(Text("note: tool output was truncated", style="warning"))
 
-        if diff:
-            # Show diff in a code block
-            self.console.print("    [dim]Diff:[/dim]")
-            self.console.print(f"    [code]{diff[:500]}[/code]")
-            if len(diff) > 500:
-                self.console.print("    [dim]... (diff truncated)[/dim]")
+        panel = Panel(
+            Group(*blocks),
+            title=title,
+            title_align="left",
+            subtitle=Text("done" if success else "failed", style=status_style),
+            subtitle_align="right",
+            border_style=border_style,
+            box=box.ROUNDED,
+            padding=(1, 2),
+        )
+        self.console.print()
+        self.console.print(panel)
 
     def handle_confirmation(self, confirmation: ToolConfirmation) -> bool:
         """
@@ -238,7 +413,7 @@ class TUI:
         Parameters
         ----------
         confirmation : ToolConfirmation
-            Confirmation request with tool details.
+            Confirmation request with tool details (from core.safety.models).
 
         Returns
         -------
@@ -250,23 +425,40 @@ class TUI:
         >>> confirmation = ToolConfirmation(...)
         >>> approved = tui.handle_confirmation(confirmation)
         """
-        self.console.print("\n[bold yellow]Confirmation Required[/bold yellow]")
-        self.console.print(f"Tool: [cyan]{confirmation.tool_name}[/cyan]")
-        self.console.print(f"Description: {confirmation.description}")
-
-        if confirmation.context.is_dangerous:
-            self.console.print("[bold red]⚠ This action is flagged as dangerous[/bold red]")
-
-        if confirmation.context.affected_paths:
-            self.console.print("Affected paths:")
-            for path in confirmation.context.affected_paths:
-                self.console.print(f"  - {path}")
+        output: list[Any] = [
+            Text(confirmation.tool_name, style="tool"),
+            Text(confirmation.description, style="code"),
+        ]
 
         if confirmation.context.command:
-            self.console.print(f"Command: [code]{confirmation.context.command}[/code]")
+            output.append(Text(f"$ {confirmation.context.command}", style="warning"))
 
-        response: str = self.console.input("\n[bold]Approve? (y/n):[/bold] ").strip().lower()
-        return response in ("y", "yes")
+        if confirmation.context.affected_paths:
+            paths_text: str = "\n".join(str(p) for p in confirmation.context.affected_paths)
+            output.append(Text(f"Affected paths:\n{paths_text}", style="muted"))
+
+        if confirmation.context.is_dangerous:
+            output.append(Text("⚠ This action is flagged as dangerous", style="error"))
+
+        self.console.print()
+        self.console.print(
+            Panel(
+                Group(*output),
+                title=Text("Approval required", style="warning"),
+                title_align="left",
+                border_style="warning",
+                box=box.ROUNDED,
+                padding=(1, 2),
+            ),
+        )
+
+        response: str = Prompt.ask(
+            "\nApprove?",
+            choices=["y", "n", "yes", "no"],
+            default="n",
+        )
+
+        return response.lower() in {"y", "yes"}
 
     def show_help(self) -> None:
         """
@@ -277,21 +469,27 @@ class TUI:
         >>> tui.show_help()
         """
         help_text: str = """
-[bold]Available Commands:[/bold]
+## Commands
 
-  /help              Show this help message
-  /exit, /quit      Exit interactive mode
-  /clear              Clear conversation and loop detector
-  /config             Show current configuration
-  /model [name]       Change or show model name
-  /approval [policy]  Change or show approval policy
-  /stats              Show session statistics
-  /tools              List available tools
-  /mcp                List MCP servers
-  /save               Save current session
-  /sessions           List saved sessions
-  /resume <id>        Resume a saved session
-  /checkpoint         Create a checkpoint
-  /restore <id>       Restore from checkpoint
+- `/help` - Show this help
+- `/exit` or `/quit` - Exit Drift
+- `/clear` - Clear conversation history
+- `/config` - Show current configuration
+- `/model <name>` - Change the model
+- `/approval <mode>` - Change approval mode
+- `/stats` - Show session statistics
+- `/tools` - List available tools
+- `/mcp` - Show MCP server status
+- `/save` - Save current session
+- `/checkpoint` - Create a checkpoint
+- `/restore <checkpoint_id>` - Restore a checkpoint
+- `/sessions` - List saved sessions
+- `/resume <session_id>` - Resume a saved session
+
+## Tips
+
+- Just type your message to chat with Drift
+- Drift can read, write, and execute code
+- Some operations require approval (can be configured)
 """
-        self.console.print(Panel(help_text, title="[bold cyan]Help[/bold cyan]"))
+        self.console.print(Markdown(help_text))

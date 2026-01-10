@@ -106,7 +106,7 @@ class CLI:
         >>> await cli.run_interactive()
         """
         self.tui.print_welcome(
-            "AI Agent",
+            "Drift",
             lines=[
                 f"model: {self.config.model_name}",
                 f"cwd: {self.config.cwd}",
