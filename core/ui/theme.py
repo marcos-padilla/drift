@@ -7,28 +7,28 @@ optimized for dark terminals with a minimal, clean design.
 
 from rich.theme import Theme
 
-# Drift theme with dark color scheme
+# Drift theme with dark color scheme - enhanced
 DRIFT_THEME = Theme(
     {
         # General styles
-        "info": "cyan",
-        "warning": "yellow",
+        "info": "bright_cyan",
+        "warning": "bright_yellow",
         "error": "bright_red bold",
-        "success": "green",
+        "success": "bright_green",
         "dim": "dim",
         "muted": "grey50",
-        "border": "grey35",
-        "highlight": "bold cyan",
+        "border": "cyan",
+        "highlight": "bold bright_cyan",
         # Role styles
         "user": "bright_blue bold",
         "assistant": "bright_white",  # Drift responses
-        # Tool styles
+        # Tool styles - enhanced with better colors
         "tool": "bright_magenta bold",
-        "tool.read": "cyan",
-        "tool.write": "yellow",
-        "tool.shell": "magenta",
+        "tool.read": "bright_cyan",
+        "tool.write": "bright_yellow",
+        "tool.shell": "bright_magenta",
         "tool.network": "bright_blue",
-        "tool.memory": "green",
+        "tool.memory": "bright_green",
         "tool.mcp": "bright_cyan",
         # Code styles
         "code": "white",

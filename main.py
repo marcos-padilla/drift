@@ -125,8 +125,9 @@ class CLI:
             while True:
                 try:
                     # Simple command history (up/down arrow support would need readline)
+                    # Enhanced input prompt
                     user_input: str = console.input(
-                        "\n[user]>[/user] ").strip()
+                        "\n[bold bright_blue]→[/bold bright_blue] ").strip()
                     if not user_input:
                         continue
 
@@ -145,11 +146,22 @@ class CLI:
 
                     await self._process_message(user_input)
                 except KeyboardInterrupt:
-                    console.print("\n[dim]Use /exit to quit[/dim]")
+                    console.print(
+                        "\n[dim italic]💡 Tip: Use /exit to quit[/dim italic]",
+                    )
                 except EOFError:
                     break
 
-        console.print("\n[dim]Goodbye![/dim]")
+        # Enhanced goodbye message
+        console.print()
+        console.print(
+            Panel(
+                Text("👋 Thanks for using Drift!", style="bold bright_cyan"),
+                border_style="cyan",
+                box=box.ROUNDED,
+                padding=(0, 2),
+            ),
+        )
         return None
 
     def _get_tool_kind(self, tool_name: str) -> str | None:

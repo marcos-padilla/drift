@@ -11,16 +11,19 @@ from pathlib import Path
 from typing import Any
 
 from rich import box
+from rich.align import Align
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 from rich.rule import Rule
 from rich.syntax import Syntax
+from rich.table import Table
 from rich.text import Text
 
 from core.config.schema import Configuration
 from core.safety.models import ToolConfirmation
+from core.ui.banner import get_banner
 from core.ui.formatters import (
     format_generic_output,
     format_grep_output,
@@ -93,12 +96,12 @@ class TUI:
         lines: list[str] | None = None,
     ) -> None:
         """
-        Print welcome message with title and information lines.
+        Print welcome message with ASCII banner and information.
 
         Parameters
         ----------
         title : str
-            Welcome title.
+            Welcome title (unused, kept for compatibility).
         lines : list[str] | None, optional
             Additional information lines to display.
 
@@ -106,28 +109,54 @@ class TUI:
         --------
         >>> tui.print_welcome("Drift", ["model: gpt-4o", "cwd: /path"])
         """
-        body: str = "\n".join(lines) if lines else ""
-        self.console.print(
-            Panel(
-                Text(body, style="code"),
-                title=Text(title, style="highlight"),
-                title_align="left",
-                border_style="border",
-                box=box.ROUNDED,
-                padding=(1, 2),
-            ),
-        )
+        # Print ASCII banner
+        banner = get_banner("default")
+        self.console.print(Align.center(Text(banner, style="bold cyan")), "\n")
+
+        # Create info table
+        if lines:
+            info_table = Table.grid(padding=(0, 2), expand=False)
+            info_table.add_column(style="dim", justify="right", no_wrap=True)
+            info_table.add_column(style="bright_white", justify="left")
+
+            for line in lines:
+                if ":" in line:
+                    key, value = line.split(":", 1)
+                    info_table.add_row(key.strip() + ":", value.strip())
+                else:
+                    info_table.add_row("", line)
+
+            # Wrap in a styled panel
+            self.console.print(
+                Panel(
+                    Align.center(info_table),
+                    border_style="cyan",
+                    box=box.ROUNDED,
+                    padding=(1, 2),
+                    title=Text(" Session Info ", style="bold cyan"),
+                    title_align="center",
+                ),
+            )
+        self.console.print()  # Extra spacing
 
     def begin_assistant(self) -> None:
         """
-        Begin assistant output section.
+        Begin assistant output section with styled header.
 
         Examples
         --------
         >>> tui.begin_assistant()
         """
         self.console.print()
-        self.console.print(Rule(Text("Drift", style="assistant")))
+        # Create a more visually appealing rule
+        drift_text = Text(" Drift ", style="bold bright_white on cyan")
+        self.console.print(
+            Rule(
+                drift_text,
+                style="cyan",
+                characters="─",
+            ),
+        )
         self._assistant_stream_open = True
 
     def stream_assistant_delta(self, content: str) -> None:
@@ -189,11 +218,13 @@ class TUI:
 
         border_style: str = f"tool.{tool_kind}" if tool_kind else "tool"
 
+        # Enhanced title with better visual indicators
+        status_icon = "▶" if tool_kind == "read" else "⚡" if tool_kind == "write" else "🔧"
         title = Text.assemble(
-            ("⏺ ", "muted"),
-            (name, "tool"),
-            ("  ", "muted"),
-            (f"#{call_id[:8]}", "muted"),
+            (f"{status_icon} ", "dim"),
+            (name, "bold tool"),
+            ("  ", "dim"),
+            (f"#{call_id[:8]}", "dim italic"),
         )
 
         # Display paths relative to CWD
@@ -268,14 +299,18 @@ class TUI:
         ... )
         """
         border_style: str = f"tool.{tool_kind}" if tool_kind else "tool"
+        # Enhanced status icons
         status_icon: str = "✓" if success else "✗"
-        status_style: str = "success" if success else "error"
-
+        status_style: str = "bold green" if success else "bold red"
+        
+        # Add emoji for better visual feedback
+        emoji_icon: str = "✅" if success else "❌"
+        
         title = Text.assemble(
-            (f"{status_icon} ", status_style),
-            (name, "tool"),
-            ("  ", "muted"),
-            (f"#{call_id[:8]}", "muted"),
+            (f"{emoji_icon} ", status_style),
+            (name, "bold tool"),
+            ("  ", "dim"),
+            (f"#{call_id[:8]}", "dim italic"),
         )
 
         args: dict[str, Any] = self._tool_args_by_call_id.get(call_id, {})
@@ -412,11 +447,20 @@ class TUI:
             blocks.append(
                 Text("note: tool output was truncated", style="warning"))
 
+        # Enhanced subtitle with better formatting
+        subtitle_text = Text()
+        if success:
+            subtitle_text.append("✓ ", style="bold green")
+            subtitle_text.append("completed", style="dim green")
+        else:
+            subtitle_text.append("✗ ", style="bold red")
+            subtitle_text.append("failed", style="dim red")
+        
         panel = Panel(
             Group(*blocks),
             title=title,
             title_align="left",
-            subtitle=Text("done" if success else "failed", style=status_style),
+            subtitle=subtitle_text,
             subtitle_align="right",
             border_style=border_style,
             box=box.ROUNDED,
