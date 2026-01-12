@@ -542,6 +542,8 @@ class TUI:
 - `/exit` or `/quit` - Exit Drift
 - `/clear` - Clear conversation history
 - `/config` - Show current configuration
+- `/provider [ollama|openai]` - Show or change LLM provider
+- `/models` - List available models (Ollama only)
 - `/model <name>` - Change the model
 - `/approval <mode>` - Change approval mode
 - `/stats` - Show session statistics
@@ -553,10 +555,18 @@ class TUI:
 - `/sessions` - List saved sessions
 - `/resume <session_id>` - Resume a saved session
 
+## Provider Management
+
+- Use `/provider ollama` to switch to local Ollama models
+- Use `/provider openai` to switch to OpenAI API
+- Use `/models` to see available Ollama models
+- Provider change auto-configures base URL
+
 ## Tips
 
 - Just type your message to chat with Drift
 - Drift can read, write, and execute code
 - Some operations require approval (can be configured)
+- Use local models for privacy and offline work
 """
         self.console.print(Markdown(help_text))

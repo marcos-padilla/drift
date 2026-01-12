@@ -78,20 +78,29 @@ class LLMClient:
         Raises
         ------
         ConnectionError
-            If API key is not configured.
+            If API key is not configured (for OpenAI provider).
         """
         if self._client is None:
             api_key: str | None = self.config.api_key
-            if not api_key:
+            base_url: str | None = self.config.base_url
+
+            # Only require API key for OpenAI provider
+            from core.config.schema import LLMProvider
+
+            if self.config.provider == LLMProvider.OPENAI and not api_key:
                 raise ConnectionError(
                     "API key not configured. Set API_KEY environment variable.",
                 )
 
+            # For Ollama, use a placeholder key if not provided
+            if not api_key:
+                api_key = "ollama"  # Placeholder, not actually used
+
             self._client = AsyncOpenAI(
-                api_key=api_key,
-                base_url=self.config.base_url,
+                api_key=api_key or "not-required",
+                base_url=base_url,
             )
-            logger.debug("LLM client initialized")
+            logger.debug(f"LLM client initialized (provider: {self.config.provider.value})")
 
         return self._client
 

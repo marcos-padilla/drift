@@ -79,6 +79,76 @@ class ModelConfig(BaseModel):
         return v
 
 
+class LLMProvider(str, Enum):
+    """LLM provider options."""
+
+    OPENAI = "openai"
+    OLLAMA = "ollama"
+
+
+class APIConfig(BaseModel):
+    """
+    Configuration for the LLM API provider.
+
+    Parameters
+    ----------
+    provider : LLMProvider, default=LLMProvider.OPENAI
+        The LLM provider to use.
+    base_url : str | None, optional
+        API base URL. Auto-set based on provider if not specified.
+    api_key : str | None, optional
+        API key. Required for OpenAI, optional for Ollama.
+
+    Examples
+    --------
+    >>> api_config = APIConfig(provider=LLMProvider.OLLAMA)
+    >>> # base_url automatically set to http://localhost:11434/v1
+    """
+
+    provider: LLMProvider = Field(
+        default=LLMProvider.OPENAI,
+        description="LLM provider",
+    )
+    base_url: str | None = Field(
+        default=None,
+        description="API base URL (auto-set based on provider if not specified)",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="API key (required for OpenAI, optional for Ollama)",
+    )
+
+    @model_validator(mode="after")
+    def configure_provider_and_base_url(self) -> APIConfig:
+        """
+        Auto-configure provider and base_url based on each other.
+
+        This validator:
+        1. Auto-detects provider from base_url if provider is default
+        2. Auto-sets base_url from provider if base_url is not set
+
+        Returns
+        -------
+        APIConfig
+            Configuration with provider and base_url properly set.
+        """
+        # Step 1: Auto-detect provider from base_url if provider is still default
+        if self.provider == LLMProvider.OPENAI and self.base_url:
+            if "localhost:11434" in self.base_url or "127.0.0.1:11434" in self.base_url:
+                self.provider = LLMProvider.OLLAMA
+            elif "api.openai.com" in self.base_url:
+                self.provider = LLMProvider.OPENAI
+
+        # Step 2: Auto-set base_url based on provider if not explicitly set
+        if self.base_url is None:
+            if self.provider == LLMProvider.OLLAMA:
+                self.base_url = "http://localhost:11434/v1"
+            elif self.provider == LLMProvider.OPENAI:
+                self.base_url = "https://api.openai.com/v1"
+
+        return self
+
+
 class ShellEnvironmentPolicy(BaseModel):
     """
     Policy for shell environment variable handling.
@@ -324,6 +394,8 @@ class Configuration(BaseModel):
 
     Parameters
     ----------
+    api : APIConfig, optional
+        API provider configuration. Uses defaults if not provided.
     model : ModelConfig, optional
         Model configuration. Uses defaults if not provided.
     cwd : Path, optional
@@ -352,12 +424,17 @@ class Configuration(BaseModel):
     Examples
     --------
     >>> config = Configuration(
-    ...     model=ModelConfig(name="gpt-4o", temperature=0.7),
+    ...     api=APIConfig(provider=LLMProvider.OLLAMA),
+    ...     model=ModelConfig(name="gpt-oss:20b", temperature=0.7),
     ...     approval=ApprovalPolicy.AUTO,
     ...     debug=True
     ... )
     """
 
+    api: APIConfig = Field(
+        default_factory=APIConfig,
+        description="API provider configuration",
+    )
     model: ModelConfig = Field(
         default_factory=ModelConfig,
         description="Model configuration",
@@ -411,26 +488,52 @@ class Configuration(BaseModel):
     @property
     def api_key(self) -> str | None:
         """
-        Get the API key from environment variables.
+        Get the API key from API config or environment variables.
 
         Returns
         -------
         str | None
             The API key if set, None otherwise.
         """
+        # Check API config first, then environment
+        if self.api.api_key:
+            return self.api.api_key
         return os.environ.get("API_KEY")
 
     @property
     def base_url(self) -> str | None:
         """
-        Get the base URL from environment variables.
+        Get the base URL from API config or environment variables.
 
         Returns
         -------
         str | None
             The base URL if set, None otherwise.
         """
-        return os.environ.get("BASE_URL")
+        # Check API config first, then environment
+        if self.api.base_url:
+            return self.api.base_url
+        env_url = os.environ.get("BASE_URL")
+        if env_url:
+            return env_url
+        # Auto-set based on provider if nothing is set
+        if self.api.provider == LLMProvider.OLLAMA:
+            return "http://localhost:11434/v1"
+        elif self.api.provider == LLMProvider.OPENAI:
+            return "https://api.openai.com/v1"
+        return None
+
+    @property
+    def provider(self) -> LLMProvider:
+        """
+        Get the current LLM provider.
+
+        Returns
+        -------
+        LLMProvider
+            The current provider.
+        """
+        return self.api.provider
 
     @property
     def model_name(self) -> str:
@@ -508,8 +611,9 @@ class Configuration(BaseModel):
         """
         errors: list[str] = []
 
-        if not self.api_key:
-            errors.append("No API key found. Set API_KEY environment variable")
+        # Only require API key for OpenAI
+        if self.api.provider == LLMProvider.OPENAI and not self.api_key:
+            errors.append("No API key found. Set API_KEY environment variable or configure in [api] section")
 
         if not self.cwd.exists():
             errors.append(f"Working directory does not exist: {self.cwd}")

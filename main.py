@@ -7,20 +7,27 @@ single-run modes, command handling, and session management.
 
 import asyncio
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 import click
 from dotenv import load_dotenv
+from rich.table import Table
 
 from core.agent.agent import Agent
 from core.agent.events import AgentEventType
 from core.agent.persistence import PersistenceManager, SessionSnapshot
 from core.agent.session import Session
 from core.config.loader import load_configuration
-from core.config.schema import ApprovalPolicy, Configuration
+from core.config.schema import ApprovalPolicy, Configuration, LLMProvider
 from core.exceptions import ConfigurationError
+from core.llm.ollama import (
+    check_ollama_connection,
+    get_ollama_model_info,
+    list_ollama_models,
+)
 from core.ui.console import get_console
 from core.ui.tui import TUI
 
@@ -107,12 +114,25 @@ class CLI:
         --------
         >>> await cli.run_interactive()
         """
+        provider_info = f"provider: {self.config.provider.value.title()}"
+        model_info = f"model: {self.config.model_name}"
+        if self.config.provider == LLMProvider.OLLAMA:
+            # Check Ollama connection
+            try:
+                if check_ollama_connection():
+                    provider_info += " ✓"
+                else:
+                    provider_info += " ⚠ (not running)"
+            except Exception:
+                provider_info += " ⚠ (connection error)"
+
         self.tui.print_welcome(
             "Drift",
             lines=[
-                f"model: {self.config.model_name}",
+                provider_info,
+                model_info,
                 f"cwd: {self.config.cwd}",
-                "commands: /help /config /approval /model /exit",
+                "commands: /help /provider /models /config /approval /model /exit",
             ],
         )
 
@@ -307,17 +327,80 @@ class CLI:
             console.print("[success]Conversation cleared [/success]")
         elif command == "/config":
             console.print("\n[bold]Current Configuration[/bold]")
+            console.print(f"  Provider: {self.config.provider.value.title()}")
+            console.print(f"  Base URL: {self.config.base_url or 'Not set'}")
             console.print(f"  Model: {self.config.model_name}")
             console.print(f"  Temperature: {self.config.temperature}")
             console.print(f"  Approval: {self.config.approval.value}")
             console.print(f"  Working Dir: {self.config.cwd}")
             console.print(f"  Max Turns: {self.config.max_turns}")
             console.print(f"  Hooks Enabled: {self.config.hooks_enabled}")
+        elif cmd_name == "/provider":
+            if cmd_args:
+                try:
+                    provider = LLMProvider(cmd_args.lower())
+                    # Check Ollama connection if switching to Ollama
+                    if provider == LLMProvider.OLLAMA:
+                        if not check_ollama_connection():
+                            console.print(
+                                "[error]Ollama is not running. "
+                                "Please start Ollama first.[/error]",
+                            )
+                            return True
+
+                    # Update provider
+                    self.config.api.provider = provider
+                    # Auto-set base_url based on provider
+                    if provider == LLMProvider.OLLAMA:
+                        self.config.api.base_url = "http://localhost:11434/v1"
+                        self.config.api.api_key = "ollama"
+                    elif provider == LLMProvider.OPENAI:
+                        self.config.api.base_url = "https://api.openai.com/v1"
+                        # Keep existing API key or require it
+                        if not self.config.api.api_key:
+                            self.config.api.api_key = os.environ.get("API_KEY")
+
+                    console.print(
+                        f"[success]Provider switched to: {provider.value.title()}[/success]",
+                    )
+                    console.print(
+                        f"[success]Base URL set to: {self.config.base_url}[/success]",
+                    )
+
+                    # Reinitialize agent session if needed
+                    if self.agent:
+                        console.print(
+                            "[dim]Note: Restart Drift for provider change to take full effect[/dim]",
+                        )
+                except ValueError:
+                    valid_options: str = ", ".join(p.value for p in LLMProvider)
+                    console.print(
+                        f"[error]Invalid provider: {cmd_args}[/error]",
+                    )
+                    console.print(f"Valid options: {valid_options}")
+            else:
+                console.print(f"Current provider: {self.config.provider.value.title()}")
+                console.print(f"Base URL: {self.config.base_url or 'Not set'}")
+        elif cmd_name == "/models":
+            await self._list_models()
         elif cmd_name == "/model":
             if cmd_args:
+                # Validate model exists for Ollama
+                if self.config.provider == LLMProvider.OLLAMA:
+                    model_info = get_ollama_model_info(cmd_args)
+                    if not model_info:
+                        console.print(
+                            f"[error]Model '{cmd_args}' not found in Ollama.[/error]",
+                        )
+                        console.print(
+                            "[dim]Use /models to list available models[/dim]",
+                        )
+                        return True
+
                 self.config.model_name = cmd_args
                 console.print(
-                    f"[success]Model changed to: {cmd_args} [/success]")
+                    f"[success]Model changed to: {cmd_args} [/success]",
+                )
             else:
                 console.print(f"Current model: {self.config.model_name}")
         elif cmd_name == "/approval":
@@ -411,6 +494,48 @@ class CLI:
             console.print(f"[error]Unknown command: {cmd_name}[/error]")
 
         return True
+
+    async def _list_models(self) -> None:
+        """
+        List available models for the current provider.
+
+        Examples
+        --------
+        >>> await cli._list_models()
+        """
+        if self.config.provider == LLMProvider.OLLAMA:
+            try:
+                models = list_ollama_models()
+                if not models:
+                    console.print("\n[warning]No models found in Ollama[/warning]")
+                    console.print("[dim]Use 'ollama pull <model-name>' to install models[/dim]")
+                    return
+
+                table = Table(title="Available Ollama Models", show_header=True, header_style="bold cyan")
+                table.add_column("Model Name", style="bright_white", no_wrap=True)
+                table.add_column("Size", style="dim", justify="right")
+                table.add_column("Modified", style="dim")
+
+                for model in models:
+                    size_gb = model.size / (1024**3)
+                    size_str = f"{size_gb:.1f} GB" if size_gb >= 1.0 else f"{model.size / (1024**2):.0f} MB"
+                    # Format modified date
+                    modified = model.modified_at[:10] if model.modified_at else "Unknown"
+                    table.add_row(model.name, size_str, modified)
+
+                console.print()
+                console.print(table)
+                console.print(f"\n[dim]Use /model <name> to select a model[/dim]")
+            except ConnectionError as e:
+                console.print(f"\n[error]Failed to connect to Ollama: {e}[/error]")
+                console.print("[dim]Make sure Ollama is running[/dim]")
+            except Exception as e:
+                console.print(f"\n[error]Error listing models: {e}[/error]")
+        elif self.config.provider == LLMProvider.OPENAI:
+            console.print("\n[bold]Current OpenAI Model[/bold]")
+            console.print(f"  {self.config.model_name}")
+            console.print("\n[dim]To use a different model, use: /model <model-name>[/dim]")
+            console.print("[dim]Examples: gpt-4o, gpt-4o-mini, gpt-4-turbo, etc.[/dim]")
 
     async def _resume_session(self, session_id: str) -> None:
         """

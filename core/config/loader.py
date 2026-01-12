@@ -6,6 +6,7 @@ multiple sources including system-wide and project-specific configuration files.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -310,6 +311,26 @@ def load_configuration(cwd: Path | None = None) -> Configuration:
         if agent_md_content:
             config_dict["developer_instructions"] = agent_md_content
             logger.debug(f"Loaded AGENT.MD from {cwd}")
+
+    # Handle environment variables for API configuration
+    # These override config file settings
+    if "api" not in config_dict:
+        config_dict["api"] = {}
+
+    # Provider from environment
+    env_provider = os.environ.get("DRIFT_PROVIDER")
+    if env_provider:
+        config_dict["api"]["provider"] = env_provider.lower()
+
+    # Base URL from environment (overrides auto-detection)
+    env_base_url = os.environ.get("BASE_URL")
+    if env_base_url:
+        config_dict["api"]["base_url"] = env_base_url
+
+    # API key from environment
+    env_api_key = os.environ.get("API_KEY")
+    if env_api_key:
+        config_dict["api"]["api_key"] = env_api_key
 
     # Create and validate configuration
     try:

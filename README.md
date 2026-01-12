@@ -8,6 +8,7 @@
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
+- [Local Models (Ollama)](#local-models-ollama)
 - [Usage](#usage)
 - [Architecture](#architecture)
 - [Adding Tools](#adding-tools)
@@ -25,7 +26,8 @@
 
 ### Core Capabilities
 
-- **🤖 AI-Powered Code Assistance**: Interact with OpenAI models (GPT-4o, GPT-4, etc.) for code generation, debugging, and refactoring
+- **🤖 AI-Powered Code Assistance**: Interact with OpenAI models (GPT-4o, GPT-4, etc.) or local models via Ollama for code generation, debugging, and refactoring
+- **🏠 Local Model Support**: Use Ollama for private, offline AI assistance with no API costs
 - **🛠️ Rich Tool Ecosystem**: Built-in tools for file operations, shell commands, web search, and more
 - **🔌 MCP Integration**: Connect to Model Context Protocol servers for extended capabilities
 - **🔒 Safety & Approval**: Configurable approval policies for potentially dangerous operations
@@ -96,12 +98,15 @@ pip install -e .
 Create a `.env` file in the project root:
 
 ```bash
-# Required: OpenAI API Key
+# For OpenAI (required)
 API_KEY=your_openai_api_key_here
 
-# Optional: Custom API base URL (for compatible APIs)
-BASE_URL=https://api.openai.com/v1
+# For Ollama (optional - provider auto-sets base_url)
+# DRIFT_PROVIDER=ollama
+# BASE_URL=http://localhost:11434/v1
 ```
+
+**Note**: For Ollama, you don't need an API key. Just set `DRIFT_PROVIDER=ollama` or use the `/provider` command.
 
 ## Quick Start
 
@@ -152,13 +157,14 @@ Drift uses a hierarchical configuration system that loads settings from multiple
 Create a `drift.toml` file in your project root or home directory:
 
 ```toml
+[api]
+provider = "openai"  # or "ollama"
+base_url = "https://api.openai.com/v1"  # Auto-set based on provider
+
 [model]
 name = "gpt-4o"
 temperature = 1.0
 context_window = 256000
-
-[api]
-base_url = "https://api.openai.com/v1"
 
 [approval]
 policy = "auto-edit"  # Options: on-request, on-failure, auto, auto-edit, never, yolo
@@ -194,14 +200,17 @@ env = { FILESYSTEM_ALLOWED_DIRS = "/path/to/allowed/dir" }
 
 #### Model Configuration
 
-- `model.name`: Model identifier (default: `"gpt-4o"`)
+- `model.name`: Model identifier (default: `"gpt-4o"` for OpenAI, varies for Ollama)
 - `model.temperature`: Sampling temperature 0.0-2.0 (default: `1.0`)
 - `model.context_window`: Maximum context window in tokens (default: `256000`)
 
 #### API Configuration
 
-- `api.base_url`: API base URL (default: from environment or OpenAI default)
-- `api.key`: API key (default: from `API_KEY` environment variable)
+- `api.provider`: LLM provider - `"openai"` or `"ollama"` (default: `"openai"`)
+- `api.base_url`: API base URL (auto-set based on provider if not specified)
+  - OpenAI: `https://api.openai.com/v1`
+  - Ollama: `http://localhost:11434/v1`
+- `api.key`: API key (required for OpenAI, optional for Ollama)
 
 #### Approval Policy
 
@@ -224,6 +233,112 @@ env = { FILESYSTEM_ALLOWED_DIRS = "/path/to/allowed/dir" }
 - `context.enable_compression`: Enable automatic context compression
 - `context.compression_threshold`: Token usage threshold for compression (0.0-1.0)
 
+#### API Configuration
+
+- `api.provider`: LLM provider (`"openai"` or `"ollama"`)
+- `api.base_url`: API base URL (auto-set based on provider)
+- `api.key`: API key (required for OpenAI, optional for Ollama)
+
+## Local Models (Ollama)
+
+Drift supports local AI models through Ollama, allowing you to run AI code assistance completely offline and privately.
+
+### Quick Setup
+
+1. **Install Ollama**: Download from [ollama.com](https://ollama.com)
+
+2. **Download a Code Model**:
+   ```bash
+   ollama pull codellama:13b
+   # Or for your specific model:
+   ollama pull gpt-oss:20b
+   ```
+
+3. **Configure Drift**:
+
+   **Option A: Configuration File** (`drift.toml`):
+   ```toml
+   [api]
+   provider = "ollama"
+   # base_url is auto-set to http://localhost:11434/v1
+
+   [model]
+   name = "gpt-oss:20b"
+   temperature = 0.7
+   ```
+
+   **Option B: Command Line**:
+   ```bash
+   # In Drift interactive mode
+   → /provider ollama
+   → /models
+   → /model gpt-oss:20b
+   ```
+
+### Using Ollama Commands
+
+**Switch to Ollama**:
+```
+→ /provider ollama
+✓ Provider switched to Ollama
+✓ Base URL set to: http://localhost:11434/v1
+```
+
+**List Available Models**:
+```
+→ /models
+Available Ollama Models:
+  • gpt-oss:20b (13 GB)
+  • codellama:13b (7.3 GB)
+  • qwen2.5-coder:32b (18 GB)
+```
+
+**Select a Model**:
+```
+→ /model gpt-oss:20b
+✓ Model changed to: gpt-oss:20b
+```
+
+**Check Configuration**:
+```
+→ /config
+Current Configuration:
+  Provider: Ollama
+  Base URL: http://localhost:11434/v1
+  Model: gpt-oss:20b
+  ...
+```
+
+### Recommended Models for Code
+
+- **gpt-oss:20b** - Your current model, good balance
+- **codellama:13b** - Excellent for code generation
+- **qwen2.5-coder:32b** - Best quality (requires more RAM)
+- **codellama:7b** - Faster, good for simple tasks
+
+### Troubleshooting Ollama
+
+**"Connection refused"**:
+- Make sure Ollama is running: `ollama list` should work
+- Check if Ollama is on the default port (11434)
+
+**"Model not found"**:
+- Verify the model is installed: `ollama list`
+- Use the exact model name from `ollama list`
+
+**Slow responses**:
+- Use a smaller model (7B instead of 13B+)
+- Enable GPU acceleration in Ollama
+- Close other applications to free up resources
+
+### Benefits of Local Models
+
+- ✅ **Privacy**: Your code never leaves your computer
+- ✅ **Cost**: No API costs
+- ✅ **Offline**: Works without internet
+- ✅ **Speed**: No network latency (depending on hardware)
+- ✅ **Control**: Full control over model behavior
+
 ## Usage
 
 ### Interactive Commands
@@ -234,6 +349,8 @@ Drift supports various slash commands in interactive mode:
 - `/exit` or `/quit` - Exit Drift
 - `/clear` - Clear conversation history
 - `/config` - Show current configuration
+- `/provider [ollama|openai]` - Show or change LLM provider
+- `/models` - List available models (Ollama only)
 - `/model <name>` - Change the model
 - `/approval <mode>` - Change approval policy
 - `/stats` - Show session statistics
