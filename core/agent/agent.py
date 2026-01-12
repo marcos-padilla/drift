@@ -240,7 +240,7 @@ class Agent:
 
             # Check for repeated errors
             if tool_call_results:
-                error_count = sum(1 for r in tool_call_results if not r.success)
+                error_count = sum(1 for r in tool_call_results if r.is_error)
                 if error_count > 0:
                     logger.warning(f"Tool call errors in turn {turn_num + 1}: {error_count}")
 
